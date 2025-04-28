@@ -1,66 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+// Agrega estos imports al inicio de tu archivo
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 const FacturacionApp = () => {
   // Estados generales
-  const [activeTab, setActiveTab] = useState('facturas');
+  const [activeTab, setActiveTab] = useState("facturas");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Estados para facturas
   const [facturas, setFacturas] = useState([]);
+  const [generandoPDF, setGenerandoPDF] = useState(false);
+
   const [facturaDetalle, setFacturaDetalle] = useState(null);
   const [nuevaFactura, setNuevaFactura] = useState({
-    clienteId: '',
+    clienteId: "",
     impuestoId: null,
-    items: [] // Esto ya está bien
+    items: [], // Esto ya está bien
   });
   const [itemFactura, setItemFactura] = useState({
-    productoId: '',
-    cantidad: 1
+    productoId: "",
+    cantidad: 1,
   });
   const [filtroFacturas, setFiltroFacturas] = useState({
-    fechaDesde: '',
-    fechaHasta: '',
-    clienteId: ''
+    fechaDesde: "",
+    fechaHasta: "",
+    clienteId: "",
   });
 
   // Estados para clientes
   const [clientes, setClientes] = useState([]);
   const [nuevoCliente, setNuevoCliente] = useState({
-    nombre: '',
-    apellido: '',
-    telefono: '',
-    documento: '',
+    nombre: "",
+    apellido: "",
+    telefono: "",
+    documento: "",
     direccion: {
-      calle: '',
-      ciudad: '',
-      provincia: '',
-      codigoPostal: '',
-      pais: ''
-    }
+      calle: "",
+      ciudad: "",
+      provincia: "",
+      codigoPostal: "",
+      pais: "",
+    },
   });
 
   // Estados para productos
   const [productos, setProductos] = useState([]);
   const [nuevoProducto, setNuevoProducto] = useState({
-    nombre: '',
-    descripcion: '',
+    nombre: "",
+    descripcion: "",
     precio: 0,
     stock: 0,
-    codigoBarras: '',
-    categoria: ''
+    codigoBarras: "",
+    categoria: "",
   });
 
   // Estados para impuestos
   const [impuestos, setImpuestos] = useState([]);
   const [nuevoImpuesto, setNuevoImpuesto] = useState({
-    nombre: '',
-    porcentaje: 0
+    nombre: "",
+    porcentaje: 0,
   });
 
   // API base URL
-  const API_URL = 'https://vigilant-smile-production-efb9.up.railway.app/api';
+  const API_URL = "https://vigilant-smile-production-efb9.up.railway.app/api";
 
   // Función para cargar facturas con filtros
   const cargarFacturas = async () => {
@@ -99,7 +104,7 @@ const FacturacionApp = () => {
       if (Array.isArray(response.data)) {
         setClientes(response.data);
       } else {
-        throw new Error('La respuesta no es un array');
+        throw new Error("La respuesta no es un array");
       }
     } catch (err) {
       setError(`Error al cargar clientes: ${err.message}`);
@@ -108,16 +113,16 @@ const FacturacionApp = () => {
       setLoading(false);
     }
   };
-  
+
   // Función para cargar productos
   const cargarProductos = async () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API_URL}/productos`);
-      if(Array.isArray(response.data)) {
+      if (Array.isArray(response.data)) {
         setProductos(response.data);
       } else {
-        throw new Error('La respuesta no es un array');
+        throw new Error("La respuesta no es un array");
       }
     } catch (err) {
       setError(`Error al cargar productos: ${err.message}`);
@@ -135,7 +140,7 @@ const FacturacionApp = () => {
       if (Array.isArray(response.data)) {
         setImpuestos(response.data);
       } else {
-        throw new Error('La respuesta no es un array');
+        throw new Error("La respuesta no es un array");
       }
     } catch (err) {
       setError(`Error al cargar impuestos: ${err.message}`);
@@ -145,18 +150,97 @@ const FacturacionApp = () => {
     }
   };
 
+  // Función para generar PDF
+  const generarPDF = async () => {
+    try {
+      if (!facturaDetalle) {
+        throw new Error("No hay datos de factura cargados");
+      }
+
+      const input = document.getElementById(`factura-${facturaDetalle.id}`);
+
+      if (!input) {
+        throw new Error("No se encontró el contenido de la factura");
+      }
+
+      // Añade un spinner o indicador de carga
+      setGenerandoPDF(true);
+
+      const canvas = await html2canvas(input, {
+        scale: 2,
+        logging: true,
+        useCORS: true,
+        scrollY: -window.scrollY, // Corrige problemas de desplazamiento
+        windowWidth: document.documentElement.offsetWidth,
+        windowHeight: document.documentElement.offsetHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgWidth = pdf.internal.pageSize.getWidth() - 20;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+      pdf.save(`factura-${facturaDetalle.id}.pdf`);
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      alert("Error al generar PDF: " + error.message);
+    } finally {
+      setGenerandoPDF(false);
+    }
+  };
+
+  const generarXML = (factura) => {
+    // Crear estructura XML básica para una factura
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<FacturaElectronica xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+  <ID>${factura.id}</ID>
+  <FechaEmision>${new Date(factura.fechaCreacion).toISOString()}</FechaEmision>
+  <Cliente>
+    <Nombre>${factura.cliente.nombre} ${factura.cliente.apellido}</Nombre>
+    <Documento>${factura.cliente.documento}</Documento>
+  </Cliente>
+  <Items>`;
+
+    // Agregar items
+    factura.items.forEach((item) => {
+      xml += `
+    <Item>
+      <Producto>${item.producto.nombre}</Producto>
+      <Cantidad>${item.cantidad}</Cantidad>
+      <PrecioUnitario>${item.precioUnitario}</PrecioUnitario>
+      <Subtotal>${item.subtotal}</Subtotal>
+    </Item>`;
+    });
+
+    // Cerrar estructura XML
+    xml += `
+  </Items>
+  <Total>${factura.total}</Total>
+</FacturaElectronica>`;
+
+    // Crear y descargar archivo
+    const blob = new Blob([xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `factura-${factura.id}.xml`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Cargar datos cuando cambia la pestaña activa
   useEffect(() => {
-    if (activeTab === 'facturas') {
+    if (activeTab === "facturas") {
       cargarFacturas();
       cargarClientes(); // Necesario para los filtros
       cargarProductos();
       cargarImpuestos();
-    } else if (activeTab === 'clientes') {
+    } else if (activeTab === "clientes") {
       cargarClientes();
-    } else if (activeTab === 'productos') {
+    } else if (activeTab === "productos") {
       cargarProductos();
-    } else if (activeTab === 'impuestos') {
+    } else if (activeTab === "impuestos") {
       cargarImpuestos();
     }
   }, [activeTab]);
@@ -164,25 +248,26 @@ const FacturacionApp = () => {
   // Función para agregar item a factura
   const handleAddItemFactura = async () => {
     try {
-      const producto = productos.find(p => p.id == itemFactura.productoId);
-      if (!producto) throw new Error('Producto no encontrado');
-      if (producto.stock < itemFactura.cantidad) throw new Error('Stock insuficiente');
+      const producto = productos.find((p) => p.id == itemFactura.productoId);
+      if (!producto) throw new Error("Producto no encontrado");
+      if (producto.stock < itemFactura.cantidad)
+        throw new Error("Stock insuficiente");
 
       const nuevoItem = {
         productoId: itemFactura.productoId,
         cantidad: itemFactura.cantidad,
         precioUnitario: producto.precio,
-        subtotal: producto.precio * itemFactura.cantidad
+        subtotal: producto.precio * itemFactura.cantidad,
       };
 
       setNuevaFactura({
         ...nuevaFactura,
-        items: [...nuevaFactura.items, nuevoItem]
+        items: [...nuevaFactura.items, nuevoItem],
       });
 
       setItemFactura({
-        productoId: '',
-        cantidad: 1
+        productoId: "",
+        cantidad: 1,
       });
     } catch (err) {
       setError(err.message);
@@ -192,29 +277,32 @@ const FacturacionApp = () => {
   // Función para crear una nueva factura
   const handleCrearFactura = async () => {
     try {
-      if (!nuevaFactura.clienteId) throw new Error('Seleccione un cliente');
-      if (nuevaFactura.items.length === 0) throw new Error('Agregue al menos un item');
-  
+      if (!nuevaFactura.clienteId) throw new Error("Seleccione un cliente");
+      if (nuevaFactura.items.length === 0)
+        throw new Error("Agregue al menos un item");
+
       const facturaData = {
         clienteId: parseInt(nuevaFactura.clienteId),
-        impuestoId: nuevaFactura.impuestoId ? parseInt(nuevaFactura.impuestoId) : null,
-        items: nuevaFactura.items.map(item => ({
+        impuestoId: nuevaFactura.impuestoId
+          ? parseInt(nuevaFactura.impuestoId)
+          : null,
+        items: nuevaFactura.items.map((item) => ({
           productoId: parseInt(item.productoId),
-          cantidad: parseInt(item.cantidad)
-        }))
+          cantidad: parseInt(item.cantidad),
+        })),
       };
-  
+
       const response = await axios.post(`${API_URL}/facturas`, facturaData);
       setFacturas([...facturas, response.data]);
-      
+
       // Resetear formulario
       setNuevaFactura({
-        clienteId: '',
+        clienteId: "",
         impuestoId: null,
-        items: []
+        items: [],
       });
-      
-      alert('Factura creada exitosamente');
+
+      alert("Factura creada exitosamente");
       cargarFacturas(); // Recargar la lista de facturas
     } catch (err) {
       setError(err.response?.data?.message || err.message);
@@ -226,19 +314,19 @@ const FacturacionApp = () => {
       const response = await axios.post(`${API_URL}/clientes`, nuevoCliente);
       setClientes([...clientes, response.data]);
       setNuevoCliente({
-        nombre: '',
-        apellido: '',
-        telefono: '',
-        documento: '',
+        nombre: "",
+        apellido: "",
+        telefono: "",
+        documento: "",
         direccion: {
-          calle: '',
-          ciudad: '',
-          provincia: '',
-          codigoPostal: '',
-          pais: ''
-        }
+          calle: "",
+          ciudad: "",
+          provincia: "",
+          codigoPostal: "",
+          pais: "",
+        },
       });
-      alert('Cliente creado exitosamente');
+      alert("Cliente creado exitosamente");
     } catch (err) {
       setError(err.message);
     }
@@ -249,14 +337,14 @@ const FacturacionApp = () => {
       const response = await axios.post(`${API_URL}/productos`, nuevoProducto);
       setProductos([...productos, response.data]);
       setNuevoProducto({
-        nombre: '',
-        descripcion: '',
+        nombre: "",
+        descripcion: "",
         precio: 0,
         stock: 0,
-        codigoBarras: '',
-        categoria: ''
+        codigoBarras: "",
+        categoria: "",
       });
-      alert('Producto creado exitosamente');
+      alert("Producto creado exitosamente");
     } catch (err) {
       setError(err.message);
     }
@@ -267,10 +355,10 @@ const FacturacionApp = () => {
       const response = await axios.post(`${API_URL}/impuestos`, nuevoImpuesto);
       setImpuestos([...impuestos, response.data]);
       setNuevoImpuesto({
-        nombre: '',
-        porcentaje: 0
+        nombre: "",
+        porcentaje: 0,
       });
-      alert('Impuesto creado exitosamente');
+      alert("Impuesto creado exitosamente");
     } catch (err) {
       setError(err.message);
     }
@@ -280,13 +368,13 @@ const FacturacionApp = () => {
   return (
     <div className="container mt-4">
       <h1 className="text-center mb-4">Sistema de Facturación</h1>
-      
+
       {error && (
         <div className="alert alert-danger" role="alert">
           {error}
-          <button 
-            type="button" 
-            className="close" 
+          <button
+            type="button"
+            className="close"
             onClick={() => setError(null)}
           >
             <span>&times;</span>
@@ -296,33 +384,33 @@ const FacturacionApp = () => {
 
       <ul className="nav nav-tabs">
         <li className="nav-item">
-          <button 
-            className={`nav-link ${activeTab === 'facturas' ? 'active' : ''}`}
-            onClick={() => setActiveTab('facturas')}
+          <button
+            className={`nav-link ${activeTab === "facturas" ? "active" : ""}`}
+            onClick={() => setActiveTab("facturas")}
           >
             Facturas
           </button>
         </li>
         <li className="nav-item">
-          <button 
-            className={`nav-link ${activeTab === 'clientes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('clientes')}
+          <button
+            className={`nav-link ${activeTab === "clientes" ? "active" : ""}`}
+            onClick={() => setActiveTab("clientes")}
           >
             Clientes
           </button>
         </li>
         <li className="nav-item">
-          <button 
-            className={`nav-link ${activeTab === 'productos' ? 'active' : ''}`}
-            onClick={() => setActiveTab('productos')}
+          <button
+            className={`nav-link ${activeTab === "productos" ? "active" : ""}`}
+            onClick={() => setActiveTab("productos")}
           >
             Productos
           </button>
         </li>
         <li className="nav-item">
-          <button 
-            className={`nav-link ${activeTab === 'impuestos' ? 'active' : ''}`}
-            onClick={() => setActiveTab('impuestos')}
+          <button
+            className={`nav-link ${activeTab === "impuestos" ? "active" : ""}`}
+            onClick={() => setActiveTab("impuestos")}
           >
             Impuestos
           </button>
@@ -339,18 +427,18 @@ const FacturacionApp = () => {
         ) : (
           <>
             {/* Pestaña de Facturas */}
-            {activeTab === 'facturas' && (
+            {activeTab === "facturas" && (
               <div>
                 <div className="d-flex justify-content-between align-items-center mb-4">
                   <h2>Gestión de Facturas</h2>
                   <div>
-                    <button 
+                    <button
                       className="btn btn-primary mr-2"
                       onClick={() => setFacturaDetalle(null)}
                     >
                       <i className="fas fa-plus"></i> Nueva Factura
                     </button>
-                    <button 
+                    <button
                       className="btn btn-secondary"
                       onClick={cargarFacturas}
                     >
@@ -360,12 +448,17 @@ const FacturacionApp = () => {
                 </div>
 
                 {facturaDetalle ? (
-                  <div className="card mb-4">
+                  <div
+                    className="card mb-4"
+                    id={`factura-${facturaDetalle.id}`}
+                  >
                     <div className="card-header bg-primary text-white">
                       <div className="d-flex justify-content-between align-items-center">
                         <h3 className="mb-0">Factura #{facturaDetalle.id}</h3>
                         <span className="badge bg-light text-dark">
-                          {new Date(facturaDetalle.fechaCreacion).toLocaleDateString()}
+                          {new Date(
+                            facturaDetalle.fechaCreacion
+                          ).toLocaleDateString()}
                         </span>
                       </div>
                     </div>
@@ -374,20 +467,46 @@ const FacturacionApp = () => {
                         <div className="col-md-6">
                           <h5>Información del Cliente</h5>
                           <div className="border p-3 rounded">
-                            <p className="mb-1"><strong>Nombre:</strong> {facturaDetalle.cliente?.nombre} {facturaDetalle.cliente?.apellido}</p>
-                            <p className="mb-1"><strong>Documento:</strong> {facturaDetalle.cliente?.documento}</p>
-                            <p className="mb-1"><strong>Teléfono:</strong> {facturaDetalle.cliente?.telefono}</p>
-                            <p className="mb-0"><strong>Dirección:</strong> {facturaDetalle.cliente?.direccion?.calle}, {facturaDetalle.cliente?.direccion?.ciudad}</p>
+                            <p className="mb-1">
+                              <strong>Nombre:</strong>{" "}
+                              {facturaDetalle.cliente?.nombre}{" "}
+                              {facturaDetalle.cliente?.apellido}
+                            </p>
+                            <p className="mb-1">
+                              <strong>Documento:</strong>{" "}
+                              {facturaDetalle.cliente?.documento}
+                            </p>
+                            <p className="mb-1">
+                              <strong>Teléfono:</strong>{" "}
+                              {facturaDetalle.cliente?.telefono}
+                            </p>
+                            <p className="mb-0">
+                              <strong>Dirección:</strong>{" "}
+                              {facturaDetalle.cliente?.direccion?.calle},{" "}
+                              {facturaDetalle.cliente?.direccion?.ciudad}
+                            </p>
                           </div>
                         </div>
                         <div className="col-md-6">
                           <h5>Detalles de Factura</h5>
                           <div className="border p-3 rounded">
                             {facturaDetalle.impuesto && (
-                              <p className="mb-1"><strong>Impuesto:</strong> {facturaDetalle.impuesto.nombre} ({facturaDetalle.impuesto.porcentaje}%)</p>
+                              <p className="mb-1">
+                                <strong>Impuesto:</strong>{" "}
+                                {facturaDetalle.impuesto.nombre} (
+                                {facturaDetalle.impuesto.porcentaje}%)
+                              </p>
                             )}
-                            <p className="mb-1"><strong>Fecha:</strong> {new Date(facturaDetalle.fechaCreacion).toLocaleDateString()}</p>
-                            <p className="mb-0"><strong>Estado:</strong> <span className="badge bg-success">Pagada</span></p>
+                            <p className="mb-1">
+                              <strong>Fecha:</strong>{" "}
+                              {new Date(
+                                facturaDetalle.fechaCreacion
+                              ).toLocaleDateString()}
+                            </p>
+                            <p className="mb-0">
+                              <strong>Estado:</strong>{" "}
+                              <span className="badge bg-success">Pagada</span>
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -406,32 +525,58 @@ const FacturacionApp = () => {
                           {facturaDetalle.items?.map((item, index) => (
                             <tr key={index}>
                               <td>
-                                <strong>{item.producto?.nombre}</strong><br/>
-                                <small className="text-muted">{item.producto?.descripcion}</small>
+                                <strong>{item.producto?.nombre}</strong>
+                                <br />
+                                <small className="text-muted">
+                                  {item.producto?.descripcion}
+                                </small>
                               </td>
-                              <td className="text-end">${item.precioUnitario?.toFixed(2)}</td>
+                              <td className="text-end">
+                                ${item.precioUnitario?.toFixed(2)}
+                              </td>
                               <td className="text-center">{item.cantidad}</td>
-                              <td className="text-end">${item.subtotal?.toFixed(2)}</td>
+                              <td className="text-end">
+                                ${item.subtotal?.toFixed(2)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr>
-                            <td colSpan="3" className="text-end"><strong>Subtotal:</strong></td>
-                            <td className="text-end">${facturaDetalle.items?.reduce((sum, item) => sum + item.subtotal, 0)?.toFixed(2)}</td>
+                            <td colSpan="3" className="text-end">
+                              <strong>Subtotal:</strong>
+                            </td>
+                            <td className="text-end">
+                              $
+                              {facturaDetalle.items
+                                ?.reduce((sum, item) => sum + item.subtotal, 0)
+                                ?.toFixed(2)}
+                            </td>
                           </tr>
                           {facturaDetalle.impuesto && (
                             <tr>
                               <td colSpan="3" className="text-end">
-                                <strong>Impuesto ({facturaDetalle.impuesto.nombre}):</strong>
+                                <strong>
+                                  Impuesto ({facturaDetalle.impuesto.nombre}):
+                                </strong>
                               </td>
                               <td className="text-end">
-                                ${(facturaDetalle.items?.reduce((sum, item) => sum + item.subtotal, 0) * facturaDetalle.impuesto.porcentaje / 100)?.toFixed(2)}
+                                $
+                                {(
+                                  (facturaDetalle.items?.reduce(
+                                    (sum, item) => sum + item.subtotal,
+                                    0
+                                  ) *
+                                    facturaDetalle.impuesto.porcentaje) /
+                                  100
+                                )?.toFixed(2)}
                               </td>
                             </tr>
                           )}
                           <tr className="table-active">
-                            <td colSpan="3" className="text-end"><strong>Total:</strong></td>
+                            <td colSpan="3" className="text-end">
+                              <strong>Total:</strong>
+                            </td>
                             <td className="text-end">
                               <h5 className="mb-0">
                                 ${facturaDetalle.total?.toFixed(2)}
@@ -440,21 +585,27 @@ const FacturacionApp = () => {
                           </tr>
                         </tfoot>
                       </table>
-
-                      <div className="d-flex justify-content-between mt-4">
-                        <button 
-                          className="btn btn-outline-secondary"
-                          onClick={() => setFacturaDetalle(null)}
-                        >
-                          <i className="fas fa-arrow-left"></i> Volver al listado
-                        </button>
-                        <div>
-                          <button className="btn btn-outline-primary mr-2">
-                            <i className="fas fa-print"></i> Imprimir
+                      <div className="d-print-none">
+                        {" "}
+                        {/* Esta clase es clave */}
+                        <div className="d-flex justify-content-between mt-4">
+                          <button className="btn btn-outline-secondary">
+                            <i className="fas fa-arrow-left"></i> Volver
                           </button>
-                          <button className="btn btn-primary">
-                            <i className="fas fa-envelope"></i> Enviar por Email
-                          </button>
+                          <div>
+                            <button
+                              className="btn btn-primary mr-2"
+                              onClick={generarPDF}
+                            >
+                              <i className="fas fa-file-pdf"></i> PDF
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => generarXML(facturaDetalle)}
+                            >
+                              <i className="fas fa-file-code"></i> XML
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -473,7 +624,12 @@ const FacturacionApp = () => {
                               type="date"
                               className="form-control"
                               value={filtroFacturas.fechaDesde}
-                              onChange={(e) => setFiltroFacturas({...filtroFacturas, fechaDesde: e.target.value})}
+                              onChange={(e) =>
+                                setFiltroFacturas({
+                                  ...filtroFacturas,
+                                  fechaDesde: e.target.value,
+                                })
+                              }
                             />
                           </div>
                           <div className="col-md-3">
@@ -482,7 +638,12 @@ const FacturacionApp = () => {
                               type="date"
                               className="form-control"
                               value={filtroFacturas.fechaHasta}
-                              onChange={(e) => setFiltroFacturas({...filtroFacturas, fechaHasta: e.target.value})}
+                              onChange={(e) =>
+                                setFiltroFacturas({
+                                  ...filtroFacturas,
+                                  fechaHasta: e.target.value,
+                                })
+                              }
                             />
                           </div>
                           <div className="col-md-4">
@@ -490,10 +651,15 @@ const FacturacionApp = () => {
                             <select
                               className="form-control"
                               value={filtroFacturas.clienteId}
-                              onChange={(e) => setFiltroFacturas({...filtroFacturas, clienteId: e.target.value})}
+                              onChange={(e) =>
+                                setFiltroFacturas({
+                                  ...filtroFacturas,
+                                  clienteId: e.target.value,
+                                })
+                              }
                             >
                               <option value="">Todos los clientes</option>
-                              {clientes.map(cliente => (
+                              {clientes.map((cliente) => (
                                 <option key={cliente.id} value={cliente.id}>
                                   {cliente.nombre} {cliente.apellido}
                                 </option>
@@ -501,7 +667,7 @@ const FacturacionApp = () => {
                             </select>
                           </div>
                           <div className="col-md-2 d-flex align-items-end">
-                            <button 
+                            <button
                               className="btn btn-primary w-100"
                               onClick={cargarFacturas}
                             >
@@ -523,13 +689,19 @@ const FacturacionApp = () => {
                             <select
                               className="form-control"
                               value={nuevaFactura.clienteId}
-                              onChange={(e) => setNuevaFactura({...nuevaFactura, clienteId: e.target.value})}
+                              onChange={(e) =>
+                                setNuevaFactura({
+                                  ...nuevaFactura,
+                                  clienteId: e.target.value,
+                                })
+                              }
                               required
                             >
                               <option value="">Seleccione un cliente</option>
-                              {clientes.map(cliente => (
+                              {clientes.map((cliente) => (
                                 <option key={cliente.id} value={cliente.id}>
-                                  {cliente.nombre} {cliente.apellido} - {cliente.documento}
+                                  {cliente.nombre} {cliente.apellido} -{" "}
+                                  {cliente.documento}
                                 </option>
                               ))}
                             </select>
@@ -538,14 +710,16 @@ const FacturacionApp = () => {
                             <label>Impuesto (Opcional)</label>
                             <select
                               className="form-control"
-                              value={nuevaFactura.impuestoId || ''}
-                              onChange={(e) => setNuevaFactura({
-                                ...nuevaFactura, 
-                                impuestoId: e.target.value || null
-                              })}
+                              value={nuevaFactura.impuestoId || ""}
+                              onChange={(e) =>
+                                setNuevaFactura({
+                                  ...nuevaFactura,
+                                  impuestoId: e.target.value || null,
+                                })
+                              }
                             >
                               <option value="">Sin impuesto</option>
-                              {impuestos.map(impuesto => (
+                              {impuestos.map((impuesto) => (
                                 <option key={impuesto.id} value={impuesto.id}>
                                   {impuesto.nombre} ({impuesto.porcentaje}%)
                                 </option>
@@ -561,12 +735,18 @@ const FacturacionApp = () => {
                             <select
                               className="form-control"
                               value={itemFactura.productoId}
-                              onChange={(e) => setItemFactura({...itemFactura, productoId: e.target.value})}
+                              onChange={(e) =>
+                                setItemFactura({
+                                  ...itemFactura,
+                                  productoId: e.target.value,
+                                })
+                              }
                             >
                               <option value="">Seleccione un producto</option>
-                              {productos.map(producto => (
+                              {productos.map((producto) => (
                                 <option key={producto.id} value={producto.id}>
-                                  {producto.nombre} - ${producto.precio} (Stock: {producto.stock})
+                                  {producto.nombre} - ${producto.precio} (Stock:{" "}
+                                  {producto.stock})
                                 </option>
                               ))}
                             </select>
@@ -578,11 +758,16 @@ const FacturacionApp = () => {
                               className="form-control"
                               min="1"
                               value={itemFactura.cantidad}
-                              onChange={(e) => setItemFactura({...itemFactura, cantidad: parseInt(e.target.value) || 1})}
+                              onChange={(e) =>
+                                setItemFactura({
+                                  ...itemFactura,
+                                  cantidad: parseInt(e.target.value) || 1,
+                                })
+                              }
                             />
                           </div>
                           <div className="col-md-4 d-flex align-items-end">
-                            <button 
+                            <button
                               className="btn btn-primary"
                               onClick={handleAddItemFactura}
                               disabled={!itemFactura.productoId}
@@ -607,20 +792,33 @@ const FacturacionApp = () => {
                               </thead>
                               <tbody>
                                 {nuevaFactura.items.map((item, index) => {
-                                  const producto = productos.find(p => p.id == item.productoId);
+                                  const producto = productos.find(
+                                    (p) => p.id == item.productoId
+                                  );
                                   return (
                                     <tr key={index}>
-                                      <td>{producto ? producto.nombre : 'Producto no encontrado'}</td>
+                                      <td>
+                                        {producto
+                                          ? producto.nombre
+                                          : "Producto no encontrado"}
+                                      </td>
                                       <td>{item.cantidad}</td>
-                                      <td>${item.precioUnitario?.toFixed(2)}</td>
+                                      <td>
+                                        ${item.precioUnitario?.toFixed(2)}
+                                      </td>
                                       <td>${item.subtotal?.toFixed(2)}</td>
                                       <td>
-                                        <button 
+                                        <button
                                           className="btn btn-danger btn-sm"
                                           onClick={() => {
-                                            const nuevosItems = [...nuevaFactura.items];
+                                            const nuevosItems = [
+                                              ...nuevaFactura.items,
+                                            ];
                                             nuevosItems.splice(index, 1);
-                                            setNuevaFactura({...nuevaFactura, items: nuevosItems});
+                                            setNuevaFactura({
+                                              ...nuevaFactura,
+                                              items: nuevosItems,
+                                            });
                                           }}
                                         >
                                           Eliminar
@@ -632,18 +830,31 @@ const FacturacionApp = () => {
                               </tbody>
                               <tfoot>
                                 <tr>
-                                  <td colSpan="3" className="text-end"><strong>Total:</strong></td>
-                                  <td>${nuevaFactura.items.reduce((sum, item) => sum + item.subtotal, 0)?.toFixed(2)}</td>
+                                  <td colSpan="3" className="text-end">
+                                    <strong>Total:</strong>
+                                  </td>
+                                  <td>
+                                    $
+                                    {nuevaFactura.items
+                                      .reduce(
+                                        (sum, item) => sum + item.subtotal,
+                                        0
+                                      )
+                                      ?.toFixed(2)}
+                                  </td>
                                   <td></td>
                                 </tr>
                               </tfoot>
                             </table>
 
                             <div className="text-right">
-                              <button 
+                              <button
                                 className="btn btn-success"
                                 onClick={handleCrearFactura}
-                                disabled={!nuevaFactura.clienteId || nuevaFactura.items.length === 0}
+                                disabled={
+                                  !nuevaFactura.clienteId ||
+                                  nuevaFactura.items.length === 0
+                                }
                               >
                                 Crear Factura
                               </button>
@@ -671,19 +882,38 @@ const FacturacionApp = () => {
                             </thead>
                             <tbody>
                               {facturas.length > 0 ? (
-                                facturas.map(factura => (
-                                  <tr key={factura.id} className="cursor-pointer" onClick={() => verDetalleFactura(factura.id)}>
-                                    <td>#{factura.id.toString().padStart(6, '0')}</td>
-                                    <td>{new Date(factura.fechaCreacion).toLocaleDateString()}</td>
+                                facturas.map((factura) => (
+                                  <tr
+                                    key={factura.id}
+                                    className="cursor-pointer"
+                                    onClick={() =>
+                                      verDetalleFactura(factura.id)
+                                    }
+                                  >
                                     <td>
-                                      <strong>{factura.cliente?.nombre} {factura.cliente?.apellido}</strong>
-                                      <br/>
-                                      <small className="text-muted">{factura.cliente?.documento}</small>
+                                      #{factura.id.toString().padStart(6, "0")}
                                     </td>
-                                    <td className="text-end">${factura.total?.toFixed(2)}</td>
                                     <td>
-                                      <button 
-                                        className="btn btn-sm btn-outline-info"
+                                      {new Date(
+                                        factura.fechaCreacion
+                                      ).toLocaleDateString()}
+                                    </td>
+                                    <td>
+                                      <strong>
+                                        {factura.cliente?.nombre}{" "}
+                                        {factura.cliente?.apellido}
+                                      </strong>
+                                      <br />
+                                      <small className="text-muted">
+                                        {factura.cliente?.documento}
+                                      </small>
+                                    </td>
+                                    <td className="text-end">
+                                      ${factura.total?.toFixed(2)}
+                                    </td>
+                                    <td>
+                                      <button
+                                        className="btn btn-sm btn-outline-info mr-2"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           verDetalleFactura(factura.id);
@@ -696,7 +926,10 @@ const FacturacionApp = () => {
                                 ))
                               ) : (
                                 <tr>
-                                  <td colSpan="5" className="text-center text-muted py-4">
+                                  <td
+                                    colSpan="5"
+                                    className="text-center text-muted py-4"
+                                  >
                                     No hay facturas registradas
                                   </td>
                                 </tr>
@@ -712,7 +945,7 @@ const FacturacionApp = () => {
             )}
 
             {/* Pestaña de Clientes */}
-            {activeTab === 'clientes' && (
+            {activeTab === "clientes" && (
               <div>
                 <h2>Clientes</h2>
                 <div className="card mb-4">
@@ -728,7 +961,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.nombre}
-                            onChange={(e) => setNuevoCliente({...nuevoCliente, nombre: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                nombre: e.target.value,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -737,7 +975,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.apellido}
-                            onChange={(e) => setNuevoCliente({...nuevoCliente, apellido: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                apellido: e.target.value,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -746,7 +989,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.telefono}
-                            onChange={(e) => setNuevoCliente({...nuevoCliente, telefono: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                telefono: e.target.value,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -755,7 +1003,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.documento}
-                            onChange={(e) => setNuevoCliente({...nuevoCliente, documento: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                documento: e.target.value,
+                              })
+                            }
                           />
                         </div>
                       </div>
@@ -767,10 +1020,15 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.direccion.calle}
-                            onChange={(e) => setNuevoCliente({
-                              ...nuevoCliente,
-                              direccion: {...nuevoCliente.direccion, calle: e.target.value}
-                            })}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                direccion: {
+                                  ...nuevoCliente.direccion,
+                                  calle: e.target.value,
+                                },
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -779,10 +1037,15 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.direccion.ciudad}
-                            onChange={(e) => setNuevoCliente({
-                              ...nuevoCliente,
-                              direccion: {...nuevoCliente.direccion, ciudad: e.target.value}
-                            })}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                direccion: {
+                                  ...nuevoCliente.direccion,
+                                  ciudad: e.target.value,
+                                },
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -791,10 +1054,15 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.direccion.provincia}
-                            onChange={(e) => setNuevoCliente({
-                              ...nuevoCliente,
-                              direccion: {...nuevoCliente.direccion, provincia: e.target.value}
-                            })}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                direccion: {
+                                  ...nuevoCliente.direccion,
+                                  provincia: e.target.value,
+                                },
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -803,10 +1071,15 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.direccion.codigoPostal}
-                            onChange={(e) => setNuevoCliente({
-                              ...nuevoCliente,
-                              direccion: {...nuevoCliente.direccion, codigoPostal: e.target.value}
-                            })}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                direccion: {
+                                  ...nuevoCliente.direccion,
+                                  codigoPostal: e.target.value,
+                                },
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -815,18 +1088,27 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoCliente.direccion.pais}
-                            onChange={(e) => setNuevoCliente({
-                              ...nuevoCliente,
-                              direccion: {...nuevoCliente.direccion, pais: e.target.value}
-                            })}
+                            onChange={(e) =>
+                              setNuevoCliente({
+                                ...nuevoCliente,
+                                direccion: {
+                                  ...nuevoCliente.direccion,
+                                  pais: e.target.value,
+                                },
+                              })
+                            }
                           />
                         </div>
                       </div>
                     </div>
-                    <button 
+                    <button
                       className="btn btn-primary"
                       onClick={handleCrearCliente}
-                      disabled={!nuevoCliente.nombre || !nuevoCliente.apellido || !nuevoCliente.documento}
+                      disabled={
+                        !nuevoCliente.nombre ||
+                        !nuevoCliente.apellido ||
+                        !nuevoCliente.documento
+                      }
                     >
                       Guardar Cliente
                     </button>
@@ -846,7 +1128,7 @@ const FacturacionApp = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {clientes.map(cliente => (
+                    {clientes.map((cliente) => (
                       <tr key={cliente.id}>
                         <td>{cliente.id}</td>
                         <td>{cliente.nombre}</td>
@@ -854,7 +1136,8 @@ const FacturacionApp = () => {
                         <td>{cliente.documento}</td>
                         <td>{cliente.telefono}</td>
                         <td>
-                          {cliente.direccion.calle}, {cliente.direccion.ciudad}, {cliente.direccion.provincia}
+                          {cliente.direccion.calle}, {cliente.direccion.ciudad},{" "}
+                          {cliente.direccion.provincia}
                         </td>
                       </tr>
                     ))}
@@ -864,7 +1147,7 @@ const FacturacionApp = () => {
             )}
 
             {/* Pestaña de Productos */}
-            {activeTab === 'productos' && (
+            {activeTab === "productos" && (
               <div>
                 <h2>Productos</h2>
                 <div className="card mb-4">
@@ -880,7 +1163,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoProducto.nombre}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, nombre: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                nombre: e.target.value,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -888,7 +1176,12 @@ const FacturacionApp = () => {
                           <textarea
                             className="form-control"
                             value={nuevoProducto.descripcion}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, descripcion: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                descripcion: e.target.value,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -897,7 +1190,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoProducto.categoria}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, categoria: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                categoria: e.target.value,
+                              })
+                            }
                           />
                         </div>
                       </div>
@@ -910,7 +1208,12 @@ const FacturacionApp = () => {
                             min="0"
                             step="0.01"
                             value={nuevoProducto.precio}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, precio: parseFloat(e.target.value) || 0})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                precio: parseFloat(e.target.value) || 0,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -920,7 +1223,12 @@ const FacturacionApp = () => {
                             className="form-control"
                             min="0"
                             value={nuevoProducto.stock}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, stock: parseInt(e.target.value) || 0})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                stock: parseInt(e.target.value) || 0,
+                              })
+                            }
                           />
                         </div>
                         <div className="form-group">
@@ -929,15 +1237,22 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoProducto.codigoBarras}
-                            onChange={(e) => setNuevoProducto({...nuevoProducto, codigoBarras: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoProducto({
+                                ...nuevoProducto,
+                                codigoBarras: e.target.value,
+                              })
+                            }
                           />
                         </div>
                       </div>
                     </div>
-                    <button 
+                    <button
                       className="btn btn-primary"
                       onClick={handleCrearProducto}
-                      disabled={!nuevoProducto.nombre || nuevoProducto.precio <= 0}
+                      disabled={
+                        !nuevoProducto.nombre || nuevoProducto.precio <= 0
+                      }
                     >
                       Guardar Producto
                     </button>
@@ -957,7 +1272,7 @@ const FacturacionApp = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {productos.map(producto => (
+                    {productos.map((producto) => (
                       <tr key={producto.id}>
                         <td>{producto.id}</td>
                         <td>{producto.nombre}</td>
@@ -973,7 +1288,7 @@ const FacturacionApp = () => {
             )}
 
             {/* Pestaña de Impuestos */}
-            {activeTab === 'impuestos' && (
+            {activeTab === "impuestos" && (
               <div>
                 <h2>Impuestos</h2>
                 <div className="card mb-4">
@@ -989,7 +1304,12 @@ const FacturacionApp = () => {
                             type="text"
                             className="form-control"
                             value={nuevoImpuesto.nombre}
-                            onChange={(e) => setNuevoImpuesto({...nuevoImpuesto, nombre: e.target.value})}
+                            onChange={(e) =>
+                              setNuevoImpuesto({
+                                ...nuevoImpuesto,
+                                nombre: e.target.value,
+                              })
+                            }
                           />
                         </div>
                       </div>
@@ -1003,15 +1323,22 @@ const FacturacionApp = () => {
                             max="100"
                             step="0.01"
                             value={nuevoImpuesto.porcentaje}
-                            onChange={(e) => setNuevoImpuesto({...nuevoImpuesto, porcentaje: parseFloat(e.target.value) || 0})}
+                            onChange={(e) =>
+                              setNuevoImpuesto({
+                                ...nuevoImpuesto,
+                                porcentaje: parseFloat(e.target.value) || 0,
+                              })
+                            }
                           />
                         </div>
                       </div>
                     </div>
-                    <button 
+                    <button
                       className="btn btn-primary"
                       onClick={handleCrearImpuesto}
-                      disabled={!nuevoImpuesto.nombre || nuevoImpuesto.porcentaje <= 0}
+                      disabled={
+                        !nuevoImpuesto.nombre || nuevoImpuesto.porcentaje <= 0
+                      }
                     >
                       Guardar Impuesto
                     </button>
@@ -1028,7 +1355,7 @@ const FacturacionApp = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {impuestos.map(impuesto => (
+                    {impuestos.map((impuesto) => (
                       <tr key={impuesto.id}>
                         <td>{impuesto.id}</td>
                         <td>{impuesto.nombre}</td>
@@ -1039,9 +1366,6 @@ const FacturacionApp = () => {
                 </table>
               </div>
             )}
-
-
-            
           </>
         )}
       </div>
